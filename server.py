@@ -1,7 +1,5 @@
-import asyncio
 import json
 import logging
-import sys
 from http import HTTPMethod
 from typing import Any, Dict, Optional
 
@@ -9,13 +7,9 @@ import httpx
 from mcp.server.fastmcp import Context, FastMCP
 
 from config import CLUSTERIQ_API_TIMEOUT, CLUSTERIQ_API_URL
+from logger import setup_logging
 
-logging.basicConfig(
-    level=logging.DEBUG,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    stream=sys.stdout,
-)
-
+setup_logging()
 log = logging.getLogger(__name__)
 
 mcp = FastMCP("ClusterIQ")
@@ -49,8 +43,7 @@ async def _call_clusteriq_api(
     """
     base_url = CLUSTERIQ_API_URL.rstrip("/")
     full_url = f"{base_url}{path}"
-    await log_ctx(
-        ctx,
+    await ctx.info(
         f"Calling API {method} {full_url}"
         + (f" with params: {params}" if params else "")
         + (f" and JSON body: {json_data}" if json_data else ""),
@@ -66,42 +59,25 @@ async def _call_clusteriq_api(
                 timeout=CLUSTERIQ_API_TIMEOUT,
             )
             response.raise_for_status()
-            await log_ctx(
-                ctx, f"API call successful: {method} {path} ({response.status_code})"
+            await ctx.info(
+                f"API call successful: {method} {path} ({response.status_code})"
             )
             return response.json()
         except httpx.HTTPStatusError as e:
-            await log_ctx(
-                ctx,
-                f"API Error {e.response.status_code}: {e.response.text}",
-                error=True,
-            )
+            await ctx.error(f"API Error {e.response.status_code}: {e.response.text}")
             raise
 
         except httpx.RequestError as e:
-            await log_ctx(ctx, f"Request Error: {str(e)}", error=True)
+            await ctx.error(f"API Request Error: {str(e)}")
             raise
 
         except json.JSONDecodeError as e:
-            await log_ctx(ctx, f"JSON decode error: {str(e)}", error=True)
+            await ctx.error(f"API JSON decode error: {str(e)}")
             raise
 
         except Exception as e:
-            await log_ctx(ctx, f"Unexpected error: {str(e)}", error=True)
+            await ctx.error(f"API Unexpected error: {str(e)}")
             raise
-
-
-async def log_ctx(ctx: Context, message: str, error: bool = False, **extra: Any):
-    method_name = "error" if error else "info"
-    method = getattr(ctx, method_name, None)
-
-    if callable(method):
-        if asyncio.iscoroutinefunction(method):
-            await method(message, **extra)
-        else:
-            method(message, **extra)
-    else:
-        (log.error if error else log.info)(message)
 
 
 @mcp.tool(
@@ -122,7 +98,7 @@ async def get_inventory_overview(ctx: Context) -> Dict[str, Any]:
         httpx.HTTPStatusError: If the API returns an error status code (4xx, 5xx).
         Exception: For other potential network or JSON parsing errors.
     """
-    log.info("*** Entering Tool Function: get_inventory_overview ***")
+    log.debug("*** Entering Tool Function: get_inventory_overview ***")
     return await _call_clusteriq_api(ctx=ctx, path="/overview", method=HTTPMethod.GET)
 
 
@@ -151,7 +127,7 @@ async def get_accounts(
         httpx.HTTPStatusError: If the ClusterIQ API responds with an error.
         Exception: For network, JSON, or unexpected processing errors.
     """
-    log.info("*** Entering Tool Function: get_accounts ***")
+    log.debug("*** Entering Tool Function: get_accounts ***")
     if account_name:
         path = f"/accounts/{account_name}"
     else:
@@ -186,7 +162,7 @@ async def get_clusters(
         httpx.HTTPStatusError: If the ClusterIQ API responds with a client/server error.
         Exception: For connection, JSON parsing, or runtime issues.
     """
-    log.info("*** Entering Tool Function: get_clusters ***")
+    log.debug("*** Entering Tool Function: get_clusters ***")
     if cluster_name:
         path = f"/clusters/{cluster_name}"
     else:
@@ -221,7 +197,7 @@ async def get_instances(
         httpx.HTTPStatusError: If the ClusterIQ API returns an error status.
         Exception: For networking, JSON parsing, or unexpected runtime errors.
     """
-    log.info("*** Entering Tool Function: get_instances ***")
+    log.debug("*** Entering Tool Function: get_instances ***")
     if cluster_name:
         path = f"/instances/{cluster_name}"
     else:
@@ -232,5 +208,5 @@ async def get_instances(
 
 
 if __name__ == "__main__":
-    print("MCP server: starting run loop")
+    log.info("MCP server: starting run loop")
     mcp.run()
