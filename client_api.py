@@ -1,6 +1,5 @@
 import json
 import logging
-import sys
 from contextlib import AsyncExitStack
 from typing import Any, Dict, List, Optional
 
@@ -11,13 +10,9 @@ from mcp import ClientSession, StdioServerParameters, stdio_client
 from pydantic import BaseModel
 
 from config import LLM_API_URL, LLM_MODEL_NAME
+from logger import setup_logging
 
-logging.basicConfig(
-    level=logging.DEBUG,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    stream=sys.stdout,
-)
-
+setup_logging()
 log = logging.getLogger(__name__)
 
 app = FastAPI()
@@ -40,12 +35,12 @@ class MCPClient:
         return self
 
     async def __aexit__(self, *args):
-        log.info("Closing MCPClient resources...")
+        log.debug("Closing MCPClient resources...")
         await self.exit_stack.aclose()
-        log.info("MCPClient resources closed.")
+        log.debug("MCPClient resources closed.")
 
     async def connect_to_server(self, server_script_path: str) -> List[Any]:
-        log.info("🔌 connect_to_server() called")
+        log.debug("connect_to_server() called")
 
         is_python = server_script_path.endswith(".py")
         is_js = server_script_path.endswith(".js")
@@ -57,20 +52,20 @@ class MCPClient:
             command=command, args=[server_script_path], env=None
         )
 
-        log.info(f"Launching MCP subprocess: {command} {server_script_path}")
+        log.debug(f"Launching MCP subprocess: {command} {server_script_path}")
         stdio_transport = await self.exit_stack.enter_async_context(
             stdio_client(server_params)
         )
         self.stdio, self.write = stdio_transport
 
-        log.info("Creating session...")
+        log.debug("Creating session...")
         self.session = await self.exit_stack.enter_async_context(
             ClientSession(self.stdio, self.write)
         )
 
-        log.info("Initializing session...")
+        log.debug("Initializing session...")
         await self.session.initialize()
-        log.info("Session initialized")
+        log.debug("Session initialized")
 
         response = await self.session.list_tools()
 
@@ -195,13 +190,13 @@ async def chat(request_body: ChatRequest):
 
             max_loops = 5
             for i in range(max_loops):
-                log.info(f"\n--- Agent Loop Iteration {i + 1} ---")
-                log.info(">>> Preparing to call LLM...")
+                log.debug(f"\n--- Agent Loop Iteration {i + 1} ---")
+                log.debug(">>> Preparing to call LLM...")
                 log.debug(f"Messages to be sent: {json.dumps(messages, indent=2)}")
 
                 try:
                     llm_response_content = await send_to_llm(messages)
-                    log.info(
+                    log.debug(
                         f"<<< LLM call successful. Response received: '{llm_response_content}'"
                     )
                 except Exception as llm_error:
@@ -225,11 +220,11 @@ async def chat(request_body: ChatRequest):
                         tool_call_request = parsed_response
                         log.info("LLM requested a tool call.")
                     else:
-                        log.info(
+                        log.debug(
                             "LLM response is JSON but not a valid tool call structure."
                         )
                 except json.JSONDecodeError:
-                    log.info("LLM response is not JSON, treating as final answer.")
+                    log.debug("LLM response is not JSON, treating as final answer.")
                 except Exception as parse_error:
                     log.warning(
                         f"Error parsing LLM response: {parse_error}. Treating as final answer."

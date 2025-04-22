@@ -11,6 +11,7 @@
     ```
 
 2. Set up the required environment variables in the [configuration file](./config.py) or by using a `.env` file.
+   Additionally you can configure the log level by setting the `LOG_LEVEL` environment variable (e.g., LOG_LEVEL=DEBUG)
 
 3. Start the MCP client
 
